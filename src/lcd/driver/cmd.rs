@@ -1,5 +1,3 @@
-use crate::lcd::Result;
-
 /// Number of lines of the display
 #[derive(Clone, Copy, Debug)]
 pub enum Lines {
@@ -47,7 +45,7 @@ macro commands(
         )*
     }
 
-    impl Driver<'_> {
+    impl<Pins: super::Pins> Driver<Pins> {
         $(
             display_command!{
                 $( #[doc = $doc ] )*
@@ -70,7 +68,7 @@ macro display_command {
         }
     ) => {
         $( #[doc = $doc ] )*
-        pub fn $name(&mut self, $( $param : $type ),* ) -> Result<()> {
+        pub fn $name(&mut self, $( $param : $type ),* ) {
             self.exec(Command:: $cmd { $( $param ),* })
         }
     },
@@ -81,7 +79,7 @@ macro display_command {
         $cmd:ident ( $( $type:ty )? )
     ) => {
         $( #[doc = $doc ] )*
-        pub fn $name(&mut self, $( v : $type )? ) -> Result<()> {
+        pub fn $name(&mut self, $( v : $type )? ) {
             self.exec(Command:: $cmd ( $( v as $type )? ) )
         }
     }
@@ -198,7 +196,7 @@ impl Command {
 //     ///
 //     /// Convenience method for calling [`exec`] with
 //     /// [`Clear`](Command::Clear)
-//     pub fn clear(&mut self) -> Result<()> {
+//     pub fn clear(&mut self) {
 //         self.exec(Command::Clear)
 //     }
 
@@ -206,7 +204,7 @@ impl Command {
 //     ///
 //     /// Convenience method for calling [`exec`] with
 //     /// [`ReturnHome`](Command::ReturnHome)
-//     pub fn return_home(&mut self) -> Result<()> {
+//     pub fn return_home(&mut self) {
 //         self.exec(Command::ReturnHome)
 //     }
 
@@ -214,7 +212,7 @@ impl Command {
 //     ///
 //     /// Convenience method for calling [`exec`] with
 //     /// [`EntryMode`](Command::EntryMode)
-//     pub fn entry_mode_set(&mut self, cursor: Direction, display: bool) -> Result<()> {
+//     pub fn entry_mode_set(&mut self, cursor: Direction, display: bool) {
 //         self.exec(Command::EntryMode { cursor, display })
 //     }
 
@@ -222,7 +220,7 @@ impl Command {
 //     ///
 //     /// Convenience method for calling [`exec`] with
 //     /// [`OnOff`](Command::OnOff)
-//     pub fn onoff(&mut self, display: bool, cursor: bool, blink: bool) -> Result<()> {
+//     pub fn onoff(&mut self, display: bool, cursor: bool, blink: bool) {
 //         self.exec(Command::Onoff {
 //             display,
 //             cursor,
@@ -234,7 +232,7 @@ impl Command {
 //     ///
 //     /// Convenience method for calling [`exec`] with
 //     /// [`Shift`](Command::Shift)
-//     pub fn cursor_or_display_shift(&mut self, shift: Shift) -> Result<()> {
+//     pub fn cursor_or_display_shift(&mut self, shift: Shift) {
 //         self.exec(Command::Shift(shift))
 //     }
 
@@ -242,7 +240,7 @@ impl Command {
 //     ///
 //     /// Convenience method for calling [`exec`] with
 //     /// [`FunctionSet`](Command::FunctionSet)
-//     pub fn function_set(&mut self, lines: Lines, font: Font) -> Result<()> {
+//     pub fn function_set(&mut self, lines: Lines, font: Font) {
 //         self.exec(Command::FunctionSet { lines, font })
 //     }
 
@@ -250,7 +248,7 @@ impl Command {
 //     ///
 //     /// Convenience method for calling [`exec`] with
 //     /// [`CgramAddress`](Command::CgramAddress)
-//     pub fn set_cgram_address(&mut self, address: u8) -> Result<()> {
+//     pub fn set_cgram_address(&mut self, address: u8) {
 //         self.exec(Command::CgRamAddress(address))
 //     }
 
@@ -258,7 +256,7 @@ impl Command {
 //     ///
 //     /// Convenience method for calling [`exec`] with
 //     /// [`DdramAddress`](Command::DdramAddress)
-//     pub fn set_ddram_address(&mut self, address: u8) -> Result<()> {
+//     pub fn set_ddram_address(&mut self, address: u8) {
 //         self.exec(Command::DdRamAddress(address))
 //     }
 // }

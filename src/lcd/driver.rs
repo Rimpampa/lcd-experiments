@@ -10,52 +10,33 @@
 //! write `"Hello"` on it:
 //! ```
 //! # use esp_test::lcd::{Driver, Pins, Result, cmd::Lines, cmd::Font};
-//! # fn main() -> Result<()> {
-//! let lcd = Driver::setup(Pins { ..todo!() })?;
+//! # fn main() {
+//! let lcd = Driver::setup(Pins { ..todo!() });
 //!
 //! // Inizialization: specify number of lines and font size
-//! lcd.function_set(Lines::Two, Font::Size5x2)?;
+//! lcd.function_set(Lines::Two, Font::Size5x2);
 //!
 //! // Enable the display and the cursor (disable blinking)
-//! lcd.on_off(true, true, false)?;
+//! lcd.on_off(true, true, false);
 //!
 //! // Clear the display contents
-//! lcd.clear()?;
+//! lcd.clear();
 //!
 //! // Write "Hello"
-//! lcd.write(b'H')?;
-//! lcd.write(b'e')?;
-//! lcd.write(b'l')?;
-//! lcd.write(b'l')?;
-//! lcd.write(b'o')?;
+//! lcd.write(b'H');
+//! lcd.write(b'e');
+//! lcd.write(b'l');
+//! lcd.write(b'l');
+//! lcd.write(b'o');
 //! # }
 //! ```
 
-use esp_idf_hal::{delay::Ets, gpio};
-use gpio::{AnyOutputPin, IOPin, Output, OutputPin, PinDriver};
+use hal::{clock::Clocks, delay::Delay};
 
-pub mod bus;
+// pub mod bus;
 pub mod cmd;
 
-use super::Result;
-
-/// Struct used for describing the pins that are connected to the LCD display
-///
-/// A value of this type can be used with [`Driver::setup`] to configure
-/// the LCD display peripheral
-pub struct Pins<Rs, Rw, En, D0, D1, D2, D3, D4, D5, D6, D7> {
-    /// Register select pin
-    pub rs: Rs,
-    /// Read/Write pin
-    pub rw: Rw,
-    /// Enable pin
-    pub en: En,
-    /// 8-bit wide data bus pins
-    pub bus: bus::Pins<D0, D1, D2, D3, D4, D5, D6, D7>,
-}
-
-/// An **ST7066U** based LCD driver
-pub struct Driver<'a> {
+pub trait Pins {
     /// Register select pin
     ///
     /// This pin selects between the _Data Register_ and the _Instruction Register_:
@@ -63,7 +44,7 @@ pub struct Driver<'a> {
     /// - **LOW** ⇒ _Instruction Register_
     ///
     /// **Note** that the _Instruction Register_ cannot be read
-    rs: PinDriver<'a, AnyOutputPin, Output>,
+    fn set_rs(&mut self, value: bool);
     /// Read/Write pin
     ///
     /// This pin selects between a read or write operation:
@@ -71,54 +52,41 @@ pub struct Driver<'a> {
     /// - **LOW** ⇒ Write
     ///
     /// **Note** that the _Instruction Register_ cannot be read
-    rw: PinDriver<'a, AnyOutputPin, Output>,
+    fn set_rw(&mut self, value: bool);
     /// Enable pin
     ///
     /// This pin starts the read or write operation
-    en: PinDriver<'a, AnyOutputPin, Output>,
-    /// 8-bit wide data bus
-    bus: bus::Bus<'a>,
+    fn set_en(&mut self, value: bool);
+
+    fn write(&mut self, value: u8);
+    fn read(&mut self) -> u8;
 }
 
-impl<'a> Driver<'a> {
+/// An **ST7066U** based LCD driver
+pub struct Driver<Pins: self::Pins> {
+    pins: Pins,
+    delay: Delay,
+}
+
+impl<Pins: self::Pins> Driver<Pins> {
     /// Sets up the [`Driver`] pins
     ///
     /// At the start all of the pins are set to output mode,
     /// and they are kept at their default level.
     /// Only the enable pin is set to low explicitly.
-    pub fn setup(
-        pins: Pins<
-            impl OutputPin,
-            impl OutputPin,
-            impl OutputPin,
-            impl IOPin,
-            impl IOPin,
-            impl IOPin,
-            impl IOPin,
-            impl IOPin,
-            impl IOPin,
-            impl IOPin,
-            impl IOPin,
-        >,
-    ) -> Result<Self> {
-        let mut en = PinDriver::output(pins.en.downgrade_output())?;
-        en.set_low()?;
-        let s = Self {
-            rs: PinDriver::output(pins.rs.downgrade_output())?,
-            rw: PinDriver::output(pins.rw.downgrade_output())?,
-            en,
-            bus: bus::Bus::new_output(pins.bus)?,
-        };
-        Ok(s)
+    pub fn setup(mut pins: Pins, clocks: &Clocks<'_>) -> Self {
+        pins.set_en(false);
+        let delay = Delay::new(clocks);
+        Self { pins, delay }
     }
 
     /// Executes the given [`Command`](cmd::Command)
-    pub fn exec(&mut self, cmd: cmd::Command) -> Result<()> {
-        self.rs.set_low()?;
-        self.rw.set_low()?;
-        self.bus.write(cmd.bits())?;
-        self.en.set_high()?;
-        self.en.set_low()?;
+    pub fn exec(&mut self, cmd: cmd::Command) {
+        self.pins.set_rs(false);
+        self.pins.set_rw(false);
+        self.pins.write(cmd.bits());
+        self.pins.set_en(true);
+        self.pins.set_en(false);
 
         use cmd::Command::*;
         let us = match cmd {
@@ -131,9 +99,7 @@ impl<'a> Driver<'a> {
             CgRamAddress(_) => 40,
             DdRamAddress(_) => 40,
         };
-        Ets::delay_us(us);
-
-        Ok(())
+        self.delay.delay(us);
     }
 
     /// Writes a byte to the [`Driver`]
@@ -142,19 +108,18 @@ impl<'a> Driver<'a> {
     /// was [`CgramAddress`](Command::CgramAddress) or
     /// [`DdramAddress`](Command::DdramAddress) this function
     /// will write either to the **CGRAM** or to the **DDRAM**, respectively.
-    pub fn write(&mut self, value: u8) -> Result<()> {
-        self.rs.set_high()?;
-        self.rw.set_low()?;
-        self.bus.write(value)?;
-        self.en.set_high()?;
-        self.en.set_low()?;
-        Ets::delay_us(37);
-        Ok(())
+    pub fn write(&mut self, value: u8) {
+        self.pins.set_rs(true);
+        self.pins.set_rw(false);
+        self.pins.write(value);
+        self.pins.set_en(true);
+        self.pins.set_en(false);
+        self.delay.delay(37);
     }
 
     /// Checks the busy flag to know if the [`Driver`] is executing a command
-    pub fn is_busy(&mut self) -> Result<bool> {
-        self.read_address_counter().map(|v| v & 0b10000000 != 0)
+    pub fn is_busy(&mut self) -> bool {
+        self.read_address_counter() & 0b10000000 != 0
     }
 
     /// Reads the address counter
@@ -165,14 +130,14 @@ impl<'a> Driver<'a> {
     /// [`DdramAddress`](Command::DdramAddress) respectively.
     ///
     /// The most significant bit of the returned value is the busy flag
-    pub fn read_address_counter(&mut self) -> Result<u8> {
-        self.rs.set_low()?;
-        self.rw.set_high()?;
-        self.bus.write(0)?;
-        self.en.set_high()?;
-        let value = self.bus.read();
-        self.en.set_low()?;
-        Ets::delay_us(1);
+    pub fn read_address_counter(&mut self) -> u8 {
+        self.pins.set_rs(false);
+        self.pins.set_rw(true);
+        self.pins.write(0);
+        self.pins.set_en(true);
+        let value = self.pins.read();
+        self.pins.set_en(false);
+        self.delay.delay(1);
         value
     }
 
@@ -182,13 +147,13 @@ impl<'a> Driver<'a> {
     /// was [`CgramAddress`](Command::CgramAddress) or
     /// [`DdramAddress`](Command::DdramAddress) this function
     /// will read either from the **CGRAM** or from the **DDRAM**, respectively.
-    pub fn read(&mut self) -> Result<u8> {
-        self.rs.set_high()?;
-        self.rw.set_high()?;
-        self.en.set_high()?;
-        let value = self.bus.read();
-        self.en.set_low()?;
-        Ets::delay_us(37);
+    pub fn read(&mut self) -> u8 {
+        self.pins.set_rs(true);
+        self.pins.set_rw(true);
+        self.pins.set_en(true);
+        let value = self.pins.read();
+        self.pins.set_en(false);
+        self.delay.delay(37);
         value
     }
 }

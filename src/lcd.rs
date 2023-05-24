@@ -15,12 +15,9 @@
 //!   stores the current address for reading and writing operation happening
 //!   on the **DDRAM** and **CGRAM**
 
-use esp_idf_sys::EspError;
-
 mod ddrom;
 
 mod driver;
-pub use driver::bus;
 pub use driver::cmd;
 pub use driver::Driver;
 pub use driver::Pins;
@@ -29,5 +26,3 @@ pub mod canvas;
 
 mod bitmap;
 pub use bitmap::Bitmap;
-
-type Result<T> = core::result::Result<T, EspError>;
