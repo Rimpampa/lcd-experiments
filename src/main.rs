@@ -63,6 +63,8 @@ impl lcd::Pins for Pins {
     }
 }
 
+mod timer;
+
 fn changes<T: PartialEq>(
     old: impl IntoIterator<Item = T>,
     new: impl IntoIterator<Item = T>,
@@ -95,6 +97,8 @@ fn main() -> ! {
     rtc.rwdt.disable();
     wdt0.disable();
     wdt1.disable();
+
+    timer::init(timer_group0.timer0);
 
     let pins = IO::new(peripherals.GPIO, peripherals.IO_MUX).pins;
     let mut display = lcd::Driver::setup(
@@ -136,8 +140,43 @@ fn main() -> ! {
         .iter_mut()
         .for_each(|v| *v = display.read());
 
+    const REPRINT_HEADERS_CYCLES: usize = 20;
+    let mut cycle = 0usize;
+
+    let mut timebuf = heapless::HistoryBuffer::<_, 100>::new();
+    let mut report = move |total, render, cgram, ddram| {
+        if cycle == 0 {
+            esp_println::print!(concat!(
+                "+------------+------------+------------+------------+------------+\n",
+                "|  Average   |   Total    | Rendering  |   CGRAM    |   DDRAM    |\n",
+                "+------------+------------+------------+------------+------------+\n",
+            ));
+        }
+        cycle += 1;
+        if cycle == REPRINT_HEADERS_CYCLES {
+            cycle = 0
+        }
+
+        timebuf.write(total);
+        let average = timebuf.iter().sum::<u32>() / timebuf.len() as u32;
+
+        let average = average as f32 / 1000f32;
+        let total = total as f32 / 1000f32;
+        let render = render as f32 / 1000f32;
+        let cgram = cgram as f32 / 1000f32;
+        let ddram = ddram as f32 / 1000f32;
+
+        esp_println::println!(
+            "| {average:>8.3}ms | {total:>8.3}ms | {render:>8.3}ms | {cgram:>8.3}ms | {ddram:>8.3}ms |"
+        );
+    };
+
     loop {
+        timer::reset();
+
         let (ddram, cgram) = canvas.render();
+
+        let elapsed_render = timer::elapsed_us();
 
         changes(old_cgram.flatten(), cgram.flatten()).fold(cgram.len(), |at, (i, v)| {
             if at != i {
@@ -147,6 +186,8 @@ fn main() -> ! {
             i + 1
         });
         old_cgram[..cgram.len()].copy_from_slice(&cgram);
+
+        let elapsed_cgram = timer::elapsed_us();
 
         changes(old_ddram, ddram)
             .map(|(i, v)| (if i >= 8 { i - 8 + 0x40 } else { i }, v))
@@ -158,6 +199,15 @@ fn main() -> ! {
                 i + 1
             });
         old_ddram = ddram;
+
+        let elapsed_ddram = timer::elapsed_us();
+
+        report(
+            timer::elapsed_us(),
+            elapsed_render,
+            elapsed_cgram - elapsed_render,
+            elapsed_ddram - elapsed_cgram,
+        );
 
         canvas.shift_left(None);
         Delay::new(&clocks).delay(200_000);
