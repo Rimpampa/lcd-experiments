@@ -18,6 +18,21 @@ pub fn all() -> impl Iterator<Item = (Bitmap, u8)> {
     MAP.entries().map(|(&a, &b)| (Bitmap::new(a), b))
 }
 
+/// Finds the [`Bitmap`] in the **DDROM** that most closely
+/// resembles the given one
+///
+/// # Return
+///
+/// This function returns a two-element tuple containing:
+/// 0) the distance from the given [`Bitmap`]
+/// 1) the address in the **DDROM**
+pub fn approx(char: Bitmap) -> (u8, u32) {
+    all()
+        .map(|(key, val)| (val, char.distance(key)))
+        .min_by_key(|(_, d)| *d)
+        .unwrap()
+}
+
 /// Map every bitmap present in the DDROM to its respective address
 static MAP: phf::Map<[u8; 8], u8> = phf::phf_map! {
     [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000] => 0x83,

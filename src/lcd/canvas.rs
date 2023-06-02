@@ -27,6 +27,7 @@ pub enum Gap {
 pub struct Canvas {
     data: [[u8; 8]; 16],
     gap: Gap,
+    pub approx: bool,
 }
 
 impl Canvas {
@@ -34,18 +35,18 @@ impl Canvas {
         let mut cgram = CgRam::new();
         let mut ddram = DdRam::default();
         for (ddram, ch) in zip(&mut ddram, self.data.map(Bitmap::new)) {
-            *ddram = Self::render_char(ch, &mut cgram);
+            *ddram = Self::render_char(ch, &mut cgram, self.approx);
         }
         (ddram, cgram)
     }
 
     /// Renders a character from the [`Canvas`]
-    fn render_char(ch: Bitmap, cgram: &mut CgRam) -> u8 {
+    fn render_char(ch: Bitmap, cgram: &mut CgRam, approx: bool) -> u8 {
         let raw = ch.raw();
         ddrom::search(ch)
             .or_else(|| Some(cgram.iter().position(|&c| c == raw)? as u8))
             .or_else(|| cgram.push(raw).map(|_| cgram.len() as u8 - 1).ok())
-            .unwrap_or_else(|| b' ')
+            .unwrap_or_else(|| approx.then(|| ddrom::approx(ch).0).unwrap_or(b' '))
     }
 
     /// Write the given text onto the canvas

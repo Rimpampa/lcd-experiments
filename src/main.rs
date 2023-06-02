@@ -55,6 +55,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut canvas = Canvas::default();
     canvas.write("Hello World!", None);
+    canvas.approx = true;
 
     let mut old_ddram = DdRam::default();
     display.set_ddram_address(0)?;

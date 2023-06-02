@@ -31,6 +31,14 @@ impl Bitmap {
     pub fn raw(self) -> [u8; 8] {
         self.0.map(|l| l.0)
     }
+
+    /// Calculate the distance from the two [`Bitmap`]s
+    ///
+    /// The distance is computed by counting the number
+    /// of different bits
+    pub fn distance(self, other: Self) -> u32 {
+        zip(self.0, other.0).map(|(a, b)| a.distance(b)).sum()
+    }
 }
 
 impl fmt::Display for Bitmap {
@@ -61,6 +69,14 @@ impl Bitline {
     /// keep only the 5 least significant bits
     pub const fn new(raw: u8) -> Self {
         Self(raw & 0b11111)
+    }
+
+    /// Calculate the distance from the two [`Bitline`]s
+    ///
+    /// The distance is computed by counting the number
+    /// of different bits
+    pub const fn distance(self, other: Self) -> u32 {
+        (self.0 ^ other.0).count_ones()
     }
 }
 
